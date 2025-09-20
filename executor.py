@@ -2,13 +2,11 @@ import os
 import shutil
 import shlex
 import psutil
+import datetime
 from typing import Tuple, List
 
+
 class CommandExecutor:
-    """
-    Execute a limited set of terminal-like commands safely using Python APIs.
-    All commands accept a cwd and return (stdout, stderr, new_cwd, exit_code).
-    """
 
     def __init__(self):
         pass
@@ -74,6 +72,31 @@ class CommandExecutor:
             if cmd == "ps":
                 return self._ps(args)
 
+            if cmd == "whoami":
+                return (os.getenv("USER", "user") + "\n", "", cwd, 0)
+
+            if cmd == "date":
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                return (now + "\n", "", cwd, 0)
+
+            if cmd == "uptime":
+                uptime = psutil.boot_time()
+                now = datetime.datetime.now().timestamp()
+                delta = int(now - uptime)
+                hrs, rem = divmod(delta, 3600)
+                mins, secs = divmod(rem, 60)
+                return (f"up {hrs}h {mins}m {secs}s\n", "", cwd, 0)
+
+            if cmd == "head":
+                return self._head(args, cwd)
+
+            if cmd == "tail":
+                return self._tail(args, cwd)
+
+            if cmd == "clear":
+                # Special marker for frontend to clear screen
+                return ("__CLEAR__", "", cwd, 0)
+
             # help
             if cmd in ("help", "--help", "-h"):
                 return (self._help_text(), "", cwd, 0)
@@ -82,7 +105,7 @@ class CommandExecutor:
         except Exception as e:
             return ("", f"Error: {e}\n", cwd, 1)
 
-    # --- Implementations ---
+    # Implementations
 
     def _path_resolve(self, path: str, cwd: str) -> str:
         if os.path.isabs(path):
@@ -177,13 +200,12 @@ class CommandExecutor:
             if not os.path.isdir(path):
                 return ("", f"rmdir: failed to remove '{a}': Not a directory\n", cwd, 1)
             try:
-                os.rmdir(path)  # only removes empty directories
+                os.rmdir(path) 
             except OSError:
                 return ("", f"rmdir: failed to remove '{a}': Directory not empty\n", cwd, 1)
         return ("", "", cwd, 0)
 
     def _echo(self, args: List[str], cwd: str):
-        # handle redirection operators
         if ">" in args:
             try:
                 idx = args.index(">")
@@ -206,7 +228,6 @@ class CommandExecutor:
             except Exception as e:
                 return ("", f"echo: redirection error: {e}\n", cwd, 1)
 
-        # default: just print text
         return (" ".join(args) + "\n", "", cwd, 0)
 
     def _cat(self, args: List[str], cwd: str):
@@ -222,6 +243,30 @@ class CommandExecutor:
             with open(p, "r", encoding="utf-8", errors="replace") as f:
                 out_lines.append(f.read())
         return ("\n".join(out_lines), "", cwd, 0)
+
+    def _head(self, args: List[str], cwd: str):
+        if not args:
+            return ("", "head: missing file operand\n", cwd, 2)
+        path = self._path_resolve(args[0], cwd)
+        if not os.path.exists(path):
+            return ("", f"head: {args[0]}: No such file or directory\n", cwd, 1)
+        if os.path.isdir(path):
+            return ("", f"head: {args[0]}: Is a directory\n", cwd, 1)
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()[:10]
+        return ("".join(lines), "", cwd, 0)
+
+    def _tail(self, args: List[str], cwd: str):
+        if not args:
+            return ("", "tail: missing file operand\n", cwd, 2)
+        path = self._path_resolve(args[0], cwd)
+        if not os.path.exists(path):
+            return ("", f"tail: {args[0]}: No such file or directory\n", cwd, 1)
+        if os.path.isdir(path):
+            return ("", f"tail: {args[0]}: Is a directory\n", cwd, 1)
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()[-10:]
+        return ("".join(lines), "", cwd, 0)
 
     def _touch(self, args: List[str], cwd: str):
         if not args:
@@ -278,8 +323,7 @@ class CommandExecutor:
                 if os.path.isdir(s):
                     if not recursive:
                         return ("", f"cp: -r not specified; omitting directory '{s}'\n", cwd, 1)
-                    target = dest if os.path.isdir(dest) else dest
-                    shutil.copytree(s, os.path.join(target, os.path.basename(s)))
+                    shutil.copytree(s, os.path.join(dest, os.path.basename(s)))
                 else:
                     if os.path.isdir(dest):
                         shutil.copy2(s, os.path.join(dest, os.path.basename(s)))
@@ -311,9 +355,9 @@ class CommandExecutor:
     def _help_text(self):
         return (
             "Supported commands:\n"
-            "  pwd, ls [-l] [path], cd <path>, mkdir <name>, rmdir <name>, rm [-r] <path>, cat <file>, touch <file>\n"
-            "  mv <src> <dest>, cp [-r] <src> <dest>\n"
-            "  echo [text] [> file] [>> file]\n"
-            "  cpu, mem, ps\n"
-            "  help\n"
+            "  pwd, ls [-l] [path], cd <path>, mkdir <name>, rmdir <name>, rm [-r] <path>\n"
+            "  cat <file>, touch <file>, mv <src> <dest>, cp [-r] <src> <dest>\n"
+            "  echo [text] [> file] [>> file], head <file>, tail <file>\n"
+            "  cpu, mem, ps, whoami, date, uptime\n"
+            "  clear, help\n"
         )

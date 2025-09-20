@@ -1,4 +1,3 @@
-<!-- templates/index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -37,6 +36,7 @@
       gap: 8px;
       border-top: 1px solid #222;
       background: #111820;
+      position: relative;
     }
     .prompt {
       min-width: 120px;
@@ -61,30 +61,33 @@
       border-radius: 4px;
       transition: background 0.2s;
     }
-    button:hover {
-      background: #17a35c;
+    button:hover { background: #17a35c; }
+    #clear { background: #c33; }
+    #clear:hover { background: #a22; }
+    .stderr { color: #ff7a7a; animation: fadein 0.2s ease-in; }
+    .stdout { color: #bfe3b8; white-space: pre-wrap; animation: fadein 0.2s ease-in; }
+    .line { margin-bottom: 6px; }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+    /* autocomplete dropdown */
+    #suggestions {
+      position: absolute;
+      bottom: 40px;
+      left: 130px;
+      background: #1a1f28;
+      border: 1px solid #333;
+      border-radius: 4px;
+      max-height: 150px;
+      overflow-y: auto;
+      display: none;
+      z-index: 1000;
     }
-    #clear {
-      background: #c33;
+    #suggestions div {
+      padding: 6px 10px;
+      cursor: pointer;
     }
-    #clear:hover {
-      background: #a22;
-    }
-    .stderr {
-      color: #ff7a7a;
-      animation: fadein 0.2s ease-in;
-    }
-    .stdout {
-      color: #bfe3b8;
-      white-space: pre-wrap;
-      animation: fadein 0.2s ease-in;
-    }
-    .line {
-      margin-bottom: 6px;
-    }
-    @keyframes fadein {
-      from { opacity: 0; }
-      to { opacity: 1; }
+    #suggestions div:hover {
+      background: #2b3445;
     }
   </style>
 </head>
@@ -98,16 +101,25 @@
     <input id="cmd" type="text" placeholder="Type a command and press Enter"/>
     <button id="send">Run</button>
     <button id="clear">Clear</button>
+    <div id="suggestions"></div>
   </div>
 
   <script>
     let cwd = "/tmp";
+
+    //expanded commands list
+    const commands = [
+      "pwd","ls","cd","mkdir","rmdir","rm","cat","touch","mv","cp","echo",
+      "cpu","mem","ps","whoami","date","uptime","head","tail","clear","help"
+    ];
+
     document.addEventListener("DOMContentLoaded", () => {
       const out = document.getElementById("output");
       const input = document.getElementById("cmd");
       const send = document.getElementById("send");
       const clearBtn = document.getElementById("clear");
       const promptEl = document.getElementById("prompt");
+      const suggestionsBox = document.getElementById("suggestions");
 
       function appendLine(content, cls){
         const d = document.createElement("div");
@@ -130,7 +142,14 @@
           body: JSON.stringify({cmd: cmd, cwd: cwd})
         });
         const j = await res.json();
-        if(j.stdout) appendLine("<div class='stdout'>"+escapeHtml(j.stdout)+"</div>");
+
+        //handle clear command
+        if(j.stdout === "__CLEAR__") {
+          out.innerHTML = "";
+        } else if(j.stdout) {
+          appendLine("<div class='stdout'>"+escapeHtml(j.stdout)+"</div>");
+        }
+
         if(j.stderr) appendLine("<div class='stderr'>"+escapeHtml(j.stderr)+"</div>");
         cwd = j.cwd || cwd;
         updatePrompt();
@@ -140,9 +159,42 @@
         return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       }
 
-      send.onclick = () => { runCmd(input.value); input.value=""; };
-      input.onkeypress = (e) => { if(e.key === "Enter") { send.click(); e.preventDefault(); } };
+      send.onclick = () => { runCmd(input.value); input.value=""; hideSuggestions(); };
+      input.onkeypress = (e) => { 
+        if(e.key === "Enter") { send.click(); e.preventDefault(); }
+        if(e.key === "Tab" && suggestionsBox.style.display === "block"){
+          e.preventDefault();
+          const first = suggestionsBox.querySelector("div");
+          if(first){ input.value = first.textContent; hideSuggestions(); }
+        }
+      };
       clearBtn.onclick = () => { out.innerHTML = ""; };
+
+      // ✅ suggestions
+      input.addEventListener("input", () => {
+        const val = input.value.trim();
+        if(!val) { hideSuggestions(); return; }
+        const matches = commands.filter(c => c.startsWith(val));
+        if(matches.length){
+          suggestionsBox.innerHTML = "";
+          matches.forEach(m => {
+            const div = document.createElement("div");
+            div.textContent = m;
+            div.onclick = () => {
+              input.value = m;
+              hideSuggestions();
+            };
+            suggestionsBox.appendChild(div);
+          });
+          suggestionsBox.style.display = "block";
+        } else {
+          hideSuggestions();
+        }
+      });
+
+      function hideSuggestions(){
+        suggestionsBox.style.display = "none";
+      }
 
       // init: get cwd from server (pwd)
       runCmd("pwd");

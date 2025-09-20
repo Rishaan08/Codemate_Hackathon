@@ -1,10 +1,10 @@
 import os
-import readline  # nice history/autocomplete on Unix
+import readline  
 from executor import CommandExecutor
 
 def main():
     execr = CommandExecutor()
-    cwd = "/tmp"   # ✅ start in writable directory
+    cwd = "/tmp"   
     os.makedirs(cwd, exist_ok=True)
     print("Python Terminal - type 'help' for commands. Ctrl-C to quit.")
     try:
